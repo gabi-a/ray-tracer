@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-DEBUG = True
+DEBUG = False # True
 
 """
 Vectors are (z, y)
@@ -17,18 +17,13 @@ def unit_vector(vector):
     return vector / np.linalg.norm(vector)
 
 def angle_between(v1, v2):
-    """ Returns the angle in radians between vectors 'v1' and 'v2'::
-
-            >>> angle_between((1, 0, 0), (0, 1, 0))
-            1.5707963267948966
-            >>> angle_between((1, 0, 0), (1, 0, 0))
-            0.0
-            >>> angle_between((1, 0, 0), (-1, 0, 0))
-            3.141592653589793
-    """
-    v1_u = unit_vector(v1)
-    v2_u = unit_vector(v2)
-    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+    """ Returns the angle in radians between vectors 'v1' and 'v2' """
+    angle = np.arctan2(v2[1], v2[0]) - np.arctan2(v1[1], v1[0])
+    if (angle > np.pi):
+        angle -= 2 * np.pi
+    elif (angle <= -np.pi):
+        angle += 2 * np.pi
+    return angle
 
 def rotate_vector(vector, theta):
     """ Rotates a vector by theta radians. """
@@ -89,26 +84,25 @@ class Ray:
         intersections = []
         for interface in self.system.interfaces:
             intersection = interface.intersect(self)
-            
             if intersection[0] and intersection[1] > 1e-4:
                 intersections.append(intersection)
         
-        # No intersections => ray hits boundary
-        if len(intersections) == 0:
-            # Calculate position at which ray would hit boundary
-            t = np.ndarray(4)
-            t[0] = (self.system.left - self.u[0]) / self.v[0]
-            t[1] = (self.system.right - self.u[0]) / self.v[0]
-            t[2] = (self.system.top - self.u[1]) / self.v[1]
-            t[3] = (self.system.bottom - self.u[1]) / self.v[1]
-            print(t)
-            # t = t[np.where(t >= 0)]
-            return True, self.u + self.v*min(t)
-
-        print(intersections)
-
+        
+        # Calculate position at which ray would hit boundary
+        t = np.ndarray(4)
+        t[0] = (self.system.left - self.u[0]) / self.v[0]
+        t[1] = (self.system.right - self.u[0]) / self.v[0]
+        t[2] = (self.system.top - self.u[1]) / self.v[1]
+        t[3] = (self.system.bottom - self.u[1]) / self.v[1]
+        t = t[np.where((t > 0) & (t != np.inf))]
+        # print(min(t))
+        intersections.append(('Boundary', min(t)))    
+        
         # Get closest intersection
         first_intersection = sorted(intersections, key=lambda x:x[1])[0]
+
+        if first_intersection[0] == 'Boundary':
+            return True, self.u + self.v * first_intersection[1]
 
         t = first_intersection[1]
         normal = first_intersection[2]
@@ -123,23 +117,21 @@ class Ray:
             plt.arrow(x, y, self.v[0], self.v[1], head_width=0.2, head_length=0.2, fc='g', ec='g')
             plt.plot(x, y, 'k>' if entering else 'k<')
 
-        print(entering)
-        print(normal)
+        # print(entering)
+        # print(normal)
 
         new_u = self.u + self.v * t
 
-        theta1 = np.pi - angle_between(normal, self.v) if entering else angle_between(normal, self.v) - np.pi
+        theta1 = angle_between(-normal, self.v) if entering else angle_between(-self.v, -normal)
+        theta2 = np.arcsin( -refractive_ratio * np.sin(theta1))
         
-        print(angle_between(normal, self.v)*180/np.pi)
+        print(f"Entering: {entering} \n\
+                refractive ratio: {refractive_ratio:.2f} \n\
+                theta1: {theta1*180/np.pi:.2f} \n\
+                theta2: {theta2*180/np.pi:.2f}")
 
-        theta2 = refractive_ratio * theta1 if entering else theta1 / refractive_ratio
-        
-        if normal[1] < 0:
-            print("Rotate down")
-            new_v = rotate_vector(-normal, theta2)
-        else:
-            print("Rotate up")
-            new_v = rotate_vector(-normal, -theta2)
+
+        new_v = rotate_vector(-normal, theta2) if entering else rotate_vector(normal, theta2)
 
         return False, Ray(new_u, new_v, self.system)
 
@@ -209,21 +201,26 @@ class CircularInterface:
 if __name__ == "__main__":
     
     left=0
-    right=10
+    right=30
     bottom=-6
     top=6
     
-    i1 = CircularInterface(50, Vector(53, 0), 1, 1.5)
-    i2 = CircularInterface(50, Vector(-46, 0), 1.5, 1)
+    i1 = CircularInterface(50, Vector(53, 0), 1, 2)
+    i2 = CircularInterface(30, Vector(-24, 0), 2, 1)
 
     system = System([i1, i2], left, right, bottom, top)
 
-    q = [(Ray(Vector(0, y), Vector(1, 0), system), [np.array([0, y])]) for y in np.linspace(-3,3, 10)]
+    q = [(Ray(Vector(0, y), Vector(1, 0), system), [np.array([0, y])]) for y in np.linspace(-5,5, 10)]
+    # q = [q[1]]
     paths = []
 
     fig, ax = plt.subplots()
 
+    i = 0
     while len(q) > 0:
+        i += 1
+        if i > 100:
+            break
         e = q.pop()
         stop, x = e[0].propagate()
         if stop:
