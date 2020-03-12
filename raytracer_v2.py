@@ -54,6 +54,7 @@ class Ray:
         intersection = min(intersections, key=lambda x:x.t)
 
         u = self.u + self.v * intersection.t
+        # print()
         # print("Intersection occured with surface described by:")
         # print("\t", intersection)
         # print("at:")
@@ -67,6 +68,8 @@ class Ray:
         n1n2 = intersection.refractive_ratio(self.u)
         n_hat = intersection.normal_at(u)
 
+        # plt.arrow(u[2], u[1], float(n_hat.dot(coords.k)), float(n_hat.dot(coords.j)), head_width=0.2, head_length=0.2, fc='g', ec='g')
+        
         # print(f"r1 = {self.v}")
         # print(f"n1n2 = {n1n2}")
         # print(f"n_hat = {n_hat}")
@@ -147,7 +150,7 @@ class Interface:
         if len(roots) == 0:
             return None
 
-        roots = roots[np.where(roots > 0)]
+        roots = roots[np.where(roots > 1e-3)]
 
         if len(roots) == 0:
             return None
@@ -155,6 +158,9 @@ class Interface:
         self.t = np.min(roots)
 
         return self
+
+    def plot(self):
+        return None
 
 #==================================#
 #      Boundary interfaces
@@ -195,8 +201,13 @@ class CylindricalInterface(Interface):
     """
 
     def __init__(self, c, r, n1, n2):
+        self.c = c
+        self.r = r
         super().__init__(_f = (coords.z - c[2])**2 + (coords.y - c[1])**2 - r**2, 
                          n1=n1, n2=n2)
+
+    def plot(self):
+        return plt.Circle(xy=(self.c[2], self.c[1]), fill=False, radius=self.r, ls='-', lw=1)
 
 class ParabolicInterface(Interface):
     """
@@ -214,18 +225,27 @@ class ParabolicInterface(Interface):
 #==================================#
 
 if __name__ == '__main__':
-        
+    
+    fig, ax = plt.subplots()
+
     system = [XY_BoundaryInterface(0),
-              XY_BoundaryInterface(10),
-              XZ_BoundaryInterface(-5),
-              XZ_BoundaryInterface(5),
-              ParabolicInterface(0.2, 2, 1, 1.2),
-              CylindricalInterface(vector(0, 0, 28), 20, 1, 1)]
+              XY_BoundaryInterface(15),
+              XZ_BoundaryInterface(-1),
+              XZ_BoundaryInterface(1),
+              CylindricalInterface(vector(0, 0, 10), 6.6218, 1, 1.52262),
+              CylindricalInterface(vector(0, 0, -2.5), 6.6218, 1.163198, 1.52262),
+              CylindricalInterface(vector(0, 0, -223+4.5), 223.29, 1, 1.163198)
+              ]
+              
 
     paths = []
-    q = [([vector(0, y, 0), ], Ray(vector(0, y, 0), unit_vector(vector(0, 0, 1)), system)) for y in np.linspace(-3, 3, 20)]
+    q = [([vector(0, y, 0), ], Ray(vector(0, y, 0), unit_vector(vector(0, 0, 1)), system)) for y in np.linspace(-0.75, 0.75, 10)]
 
+    iters = 0
     while len(q) > 0:
+        iters += 1
+        if iters > 100:
+            break
         print(f"There are {len(q)} rays in the queue.", end="\r")
         elem = q.pop()
         hit_boundary, next = elem[1].propagate()
@@ -238,10 +258,16 @@ if __name__ == '__main__':
         
     for path in paths:
         p = np.asarray(path).T
-        plt.plot(p[2], p[1])
+        plt.plot(p[2], p[1], 'r')
         plt.plot(p[2], p[1], 'kx')
 
-    plt.xlim(0, 10)
-    plt.ylim(-5, 5)
+    for interface in system:
+        patch = interface.plot()
+        if patch is not None:
+            ax.add_patch(patch)
+
+    plt.xlim(0, 15)
+    plt.ylim(-1, 1)
+    # ax.set_aspect('equal')
     plt.show()
 
