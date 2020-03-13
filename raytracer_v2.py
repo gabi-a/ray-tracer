@@ -110,11 +110,12 @@ class Ray:
 
 class Interface:
 
-    def __init__(self, _f=None, n1=1, n2=1, is_boundary=False):
+    def __init__(self, _f=None, n1=1, n2=1, is_boundary=False, _constraint=None):
         self._f = _f
         self.n1 = n1
         self.n2 = n2
         self.is_boundary = is_boundary
+        self._constraint = _constraint
 
         delop = Del()
         self._grad_f = delop.gradient(self._f, True).normalize()
@@ -139,9 +140,9 @@ class Interface:
         g = self._f.subs([(coords.x, ray.u[0] + ray.v[0]*_t), 
                           (coords.y, ray.u[1] + ray.v[1]*_t), 
                           (coords.z, ray.u[2] + ray.v[2]*_t)])
-
-        sol = solveset_real(Eq(g, 0), _t)
         
+        sol = solveset_real(Eq(g, 0), _t)
+
         try:
             roots = np.asarray(list(sol), dtype=float)
         except:
@@ -156,6 +157,16 @@ class Interface:
             return None
 
         self.t = np.min(roots)
+
+
+        if self._constraint is not None:
+            
+            c = self._constraint.subs([(coords.x, ray.u[0] + ray.v[0]*_t), 
+                                       (coords.y, ray.u[1] + ray.v[1]*_t), 
+                                       (coords.z, ray.u[2] + ray.v[2]*_t)])
+            
+            if bool(c.subs(_t, self.t)) == False:
+                return None
 
         return self
 
@@ -200,12 +211,16 @@ class CylindricalInterface(Interface):
     (z-c_z)^2 + (y-c_y)^2 = r^2
     """
 
-    def __init__(self, c, r, n1, n2):
+    def __init__(self, c, r, n1, n2, z_constraint_val=None, z_constraint_op='<'):
         self.c = c
         self.r = r
-        super().__init__(_f = (coords.z - c[2])**2 + (coords.y - c[1])**2 - r**2, 
-                         n1=n1, n2=n2)
 
+        if z_constraint_val is not None:
+            z_constraint = eval(f"coords.z {z_constraint_op} z_constraint_val")
+            super().__init__(_f = (coords.z - c[2])**2 + (coords.y - c[1])**2 - r**2, n1=n1, n2=n2, _constraint=z_constraint)
+        else:
+            super().__init__(_f = (coords.z - c[2])**2 + (coords.y - c[1])**2 - r**2, n1=n1, n2=n2)
+        
     def plot(self):
         return plt.Circle(xy=(self.c[2], self.c[1]), fill=False, radius=self.r, ls='-', lw=1)
 
@@ -228,23 +243,26 @@ if __name__ == '__main__':
     
     fig, ax = plt.subplots()
 
+    n_air = 1
+    n_BK7 = [1.52262, 1.51707, 1.51461]
+    n_F2  = [1.63198, 1.62045, 1.61564]
+
     system = [XY_BoundaryInterface(0),
-              XY_BoundaryInterface(15),
+              XY_BoundaryInterface(30),
               XZ_BoundaryInterface(-1),
               XZ_BoundaryInterface(1),
-              CylindricalInterface(vector(0, 0, 10), 6.6218, 1, 1.52262),
-              CylindricalInterface(vector(0, 0, -2.5), 6.6218, 1.163198, 1.52262),
-              CylindricalInterface(vector(0, 0, -223+4.5), 223.29, 1, 1.163198)
-              ]
-              
+              CylindricalInterface(vector(0, 0, 10), 6.6218, n_air, n_BK7[0], z_constraint_val=10),
+              CylindricalInterface(vector(0, 0, -3.1), 6.6218, n_F2[0], n_BK7[0]),
+              CylindricalInterface(vector(0, 0, -223+3.3), 223.29, n_air, n_F2[0])]
 
     paths = []
-    q = [([vector(0, y, 0), ], Ray(vector(0, y, 0), unit_vector(vector(0, 0, 1)), system)) for y in np.linspace(-0.75, 0.75, 10)]
+    q = [([vector(0, y, 0), ], Ray(vector(0, y, 0), unit_vector(vector(0, 0, 1)), system)) for y in np.linspace(-0.5, 0.5, 10)]
 
     iters = 0
     while len(q) > 0:
         iters += 1
         if iters > 100:
+            print("Max iterations exceeded!")
             break
         print(f"There are {len(q)} rays in the queue.", end="\r")
         elem = q.pop()
@@ -266,7 +284,7 @@ if __name__ == '__main__':
         if patch is not None:
             ax.add_patch(patch)
 
-    plt.xlim(0, 15)
+    plt.xlim(0, 30)
     plt.ylim(-1, 1)
     # ax.set_aspect('equal')
     plt.show()
